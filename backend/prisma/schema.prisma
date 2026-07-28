@@ -1,0 +1,423 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// Multi-Tenant
+// ─────────────────────────────────────────────
+
+model Tenant {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  logoUrl     String?
+  city        String?
+  website     String?
+  agentCount  Int      @default(1)
+  apiKey      String?  @unique
+  plan        String   @default("starter") // starter | growth | pro | enterprise
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users        User[]
+  leads        Lead[]
+  contacts     Contact[]
+  properties   Property[]
+  deals        Deal[]
+  tasks        Task[]
+  activities   Activity[]
+  subscription Subscription?
+  apifyHousingIntegration ApifyHousingIntegration?
+  housingComIntegration HousingComIntegration?
+
+  @@map("tenants")
+}
+
+/// Per-tenant Housing.com lead API credentials (ID + secret key from Housing.com).
+/// The secret key is encrypted before storage and is never returned by the API.
+model HousingComIntegration {
+  id                  String    @id @default(cuid())
+  tenantId            String    @unique
+  housingId           String
+  secretKeyCiphertext String
+  lastImportedAt      DateTime?
+  lastFetchedUntil    DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("housing_com_integrations")
+}
+
+/// Developer configuration for importing Housing.com actor results through Apify.
+/// The API token is encrypted before it is stored and is never returned by the API.
+model ApifyHousingIntegration {
+  id              String   @id @default(cuid())
+  tenantId        String   @unique
+  actorId         String
+  tokenCiphertext String
+  actorInput      Json     @default("{}")
+  lastImportedAt  DateTime?
+  lastRunId       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("apify_housing_integrations")
+}
+
+// ─────────────────────────────────────────────
+// Subscription & Billing
+// ─────────────────────────────────────────────
+
+model Subscription {
+  id               String    @id @default(cuid())
+  tenantId         String    @unique
+  plan             String    // starter | growth | pro | enterprise
+  status           String    // trial | active | past_due | cancelled
+  trialEndsAt      DateTime?
+  currentPeriodEnd DateTime?
+  razorpaySubId    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+// ─────────────────────────────────────────────
+// Users & Auth
+// ─────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  AGENT
+}
+
+model User {
+  id           String    @id @default(cuid())
+  tenantId     String
+  email        String
+  passwordHash String
+  firstName    String
+  lastName     String
+  phone        String?
+  avatarUrl    String?
+  role         UserRole  @default(AGENT)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedLeads   Lead[]       @relation("AssignedAgent")
+  createdLeads    Lead[]       @relation("CreatedBy")
+  tasks           Task[]       @relation("AssignedTo")
+  createdTasks    Task[]       @relation("TaskCreatedBy")
+  activities      Activity[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// Contacts
+// ─────────────────────────────────────────────
+
+enum ContactType {
+  BUYER
+  SELLER
+  BUILDER
+  INVESTOR
+  OTHER
+}
+
+model Contact {
+  id        String      @id @default(cuid())
+  tenantId  String
+  type      ContactType @default(BUYER)
+  firstName String
+  lastName  String
+  email     String?
+  phone     String
+  phone2    String?
+  company   String?
+  city      String?
+  notes     String?
+  tags      String[]    @default([])
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leads     Lead[]
+
+  @@map("contacts")
+}
+
+// ─────────────────────────────────────────────
+// Properties
+// ─────────────────────────────────────────────
+
+enum PropertyType {
+  APARTMENT
+  VILLA
+  PLOT
+  COMMERCIAL
+  OFFICE
+  SHOP
+}
+
+enum PropertyStatus {
+  AVAILABLE
+  UNDER_CONSTRUCTION
+  SOLD
+  BLOCKED
+}
+
+model Property {
+  id              String         @id @default(cuid())
+  tenantId        String
+  name            String
+  projectName     String?
+  type            PropertyType   @default(APARTMENT)
+  status          PropertyStatus @default(AVAILABLE)
+  city            String
+  locality        String?
+  address         String?
+  bedrooms        Int?
+  bathrooms       Int?
+  carpetArea      Float?         // in sq ft
+  superArea       Float?         // in sq ft
+  priceMin        Float?
+  priceMax        Float?
+  pricePerSqft    Float?
+  floorNumber     Int?
+  totalFloors     Int?
+  possessionDate  DateTime?
+  amenities       String[]       @default([])
+  imageUrls       String[]       @default([])
+  description     String?
+  reraId          String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deals     Deal[]
+
+  @@map("properties")
+}
+
+// ─────────────────────────────────────────────
+// Leads
+// ─────────────────────────────────────────────
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  SITE_VISIT
+  NEGOTIATION
+  BOOKED
+  WON
+  LOST
+  UNQUALIFIED
+}
+
+enum LeadSource {
+  HOUSING_COM
+  MAGIC_BRICKS
+  NINETY_NINE_ACRES
+  FACEBOOK
+  GOOGLE_ADS
+  REFERRAL
+  WALK_IN
+  WEBSITE
+  WHATSAPP
+  COLD_CALL
+  OTHER
+}
+
+enum BudgetRange {
+  BELOW_30L
+  RANGE_30_50L
+  RANGE_50_75L
+  RANGE_75L_1CR
+  RANGE_1_2CR
+  ABOVE_2CR
+}
+
+model Lead {
+  id              String      @id @default(cuid())
+  tenantId        String
+  contactId       String?
+  assignedToId    String?
+  createdById     String?
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String
+  source          LeadSource  @default(OTHER)
+  status          LeadStatus  @default(NEW)
+  budgetRange     BudgetRange?
+  budgetMin       Float?
+  budgetMax       Float?
+  preferredCity   String?
+  preferredLocality String?
+  preferredType   PropertyType?
+  bedrooms        Int?
+  notes           String?
+  tags            String[]    @default([])
+  externalId      String?     // ID from external source like Housing.com
+  importedAt      DateTime?
+  lostReason      String?
+  followUpDate    DateTime?
+  lastContactedAt DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact     Contact?   @relation(fields: [contactId], references: [id])
+  assignedTo  User?      @relation("AssignedAgent", fields: [assignedToId], references: [id])
+  createdBy   User?      @relation("CreatedBy", fields: [createdById], references: [id])
+  deals       Deal[]
+  tasks       Task[]
+  activities  Activity[]
+
+  @@map("leads")
+}
+
+// ─────────────────────────────────────────────
+// Deals (Pipeline)
+// ─────────────────────────────────────────────
+
+enum DealStage {
+  NEW
+  CONTACTED
+  SITE_VISIT
+  NEGOTIATION
+  BOOKED
+  WON
+  LOST
+}
+
+model Deal {
+  id          String    @id @default(cuid())
+  tenantId    String
+  leadId      String?
+  propertyId  String?
+  title       String
+  stage       DealStage @default(NEW)
+  value       Float?
+  closingDate DateTime?
+  probability Int?      @default(0) // 0-100
+  lostReason  String?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead       Lead?     @relation(fields: [leadId], references: [id])
+  property   Property? @relation(fields: [propertyId], references: [id])
+  activities Activity[]
+
+  @@map("deals")
+}
+
+// ─────────────────────────────────────────────
+// Tasks & Follow-ups
+// ─────────────────────────────────────────────
+
+enum TaskType {
+  FOLLOW_UP
+  SITE_VISIT
+  CALL
+  EMAIL
+  MEETING
+  DOCUMENT
+  OTHER
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Task {
+  id           String       @id @default(cuid())
+  tenantId     String
+  leadId       String?
+  assignedToId String?
+  createdById  String?
+  title        String
+  description  String?
+  type         TaskType     @default(FOLLOW_UP)
+  priority     TaskPriority @default(MEDIUM)
+  dueDate      DateTime?
+  completedAt  DateTime?
+  isCompleted  Boolean      @default(false)
+  reminderAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead       Lead?   @relation(fields: [leadId], references: [id])
+  assignedTo User?   @relation("AssignedTo", fields: [assignedToId], references: [id])
+  createdBy  User?   @relation("TaskCreatedBy", fields: [createdById], references: [id])
+
+  @@map("tasks")
+}
+
+// ─────────────────────────────────────────────
+// Activity Timeline
+// ─────────────────────────────────────────────
+
+enum ActivityType {
+  LEAD_CREATED
+  LEAD_UPDATED
+  STATUS_CHANGED
+  NOTE_ADDED
+  TASK_CREATED
+  TASK_COMPLETED
+  DEAL_CREATED
+  DEAL_STAGE_CHANGED
+  CALL_LOGGED
+  EMAIL_SENT
+  SITE_VISIT_SCHEDULED
+  SITE_VISIT_COMPLETED
+  LEAD_IMPORTED
+  LEAD_ASSIGNED
+}
+
+model Activity {
+  id          String       @id @default(cuid())
+  tenantId    String
+  leadId      String?
+  dealId      String?
+  userId      String?
+  type        ActivityType
+  title       String
+  description String?
+  metadata    Json?
+  createdAt   DateTime     @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead    Lead?   @relation(fields: [leadId], references: [id])
+  deal    Deal?   @relation(fields: [dealId], references: [id])
+  user    User?   @relation(fields: [userId], references: [id])
+
+  @@map("activities")
+}

@@ -1,0 +1,467 @@
+# SaaS Product Plan — Real Estate CRM Platform
+
+## Vision
+A **multi-tenant SaaS CRM** sold to real estate agencies across India.
+Each agency signs up, gets their own isolated workspace, connects their lead sources,
+and manages their entire sales pipeline from one dashboard.
+
+---
+
+## The Big Picture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    YOUR SaaS PLATFORM                           │
+│                  (e.g., PropCRM.in)                             │
+│                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
+│  │  Agency A    │  │  Agency B    │  │  Agency C    │  ...     │
+│  │  Skyline     │  │  DreamHome   │  │  UrbanNest   │         │
+│  │  Realty      │  │  Properties  │  │  Realtors    │         │
+│  │  Mumbai      │  │  Pune        │  │  Bangalore   │         │
+│  └──────────────┘  └──────────────┘  └──────────────┘         │
+│         │                 │                  │                  │
+│         └─────────────────┴──────────────────┘                 │
+│                           │                                     │
+│                    Shared Backend                               │
+│                    Shared Database                              │
+│                    (Data isolated by tenantId)                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Current State Assessment
+
+### ✅ Already Built (You're ahead!)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Multi-tenant DB schema | ✅ Done | Every table has `tenantId` |
+| JWT Authentication | ✅ Done | Per-tenant user login |
+| Roles (Admin/Manager/Agent) | ✅ Done | RBAC in place |
+| Leads module | ✅ Done | Full CRUD |
+| Deals / Pipeline | ✅ Done | Stage-based |
+| Contacts | ✅ Done | |
+| Properties | ✅ Done | |
+| Tasks & Follow-ups | ✅ Done | |
+| Activity Timeline | ✅ Done | |
+| Dashboard & Analytics | ✅ Done | |
+| All lead sources in DB schema | ✅ Done | 99acres, MagicBricks, Facebook, etc. |
+
+### ❌ Missing for SaaS
+
+| Feature | Priority | Effort |
+|---------|----------|--------|
+| Public landing/marketing page | 🔴 High | 3–5 days |
+| Agency self-signup & onboarding | 🔴 High | 3–4 days |
+| Subscription plans & billing | 🔴 High | 3–5 days |
+| Webhook/lead capture system | 🔴 High | 2–3 days |
+| Email notifications | 🔴 High | 1–2 days |
+| Tenant admin settings panel | 🟡 Med | 2–3 days |
+| WhatsApp integration | 🟡 Med | 3–5 days |
+| Property portal parsers | 🟡 Med | 2–3 days each |
+| Mobile-responsive UI (PWA) | 🟡 Med | 3–5 days |
+| Super Admin panel (your dashboard) | 🟡 Med | 2–3 days |
+| White-label domain support | 🟢 Low | 5–7 days |
+| Public API for agencies | 🟢 Low | 3–5 days |
+| Mobile app (iOS/Android) | 🟢 Low | 4–8 weeks |
+
+---
+
+## 8 Build Phases
+
+---
+
+### Phase 1 — Public Landing Page & Signup (Week 1–2)
+
+**Goal:** An agency owner visits your website, sees the pitch, signs up, and immediately gets a working CRM.
+
+#### What to build:
+
+**A. Marketing Landing Page (`/`)**
+- Hero: "The CRM Built for Indian Real Estate"
+- Features showcase
+- Pricing plans
+- Testimonials (add later)
+- "Start Free Trial" CTA
+
+**B. Signup Flow (`/signup`)**
+```
+Step 1: Agency details
+  - Agency name
+  - City
+  - Number of agents
+  - Website (optional)
+
+Step 2: Admin account
+  - Full name
+  - Email
+  - Password
+
+Step 3: Auto-provisioned!
+  - Tenant created in DB
+  - Admin user created
+  - Slug auto-generated (e.g., "dreamhome-properties")
+  - Welcome email sent
+  - Redirected to dashboard
+```
+
+**C. Login Page (`/login`)**
+- Email + password
+- "Forgot password" flow
+
+**D. Onboarding Checklist (first-login wizard)**
+```
+✅ Step 1: Add your first property
+✅ Step 2: Invite your first agent
+✅ Step 3: Create your first lead
+✅ Step 4: Connect a lead source (webhook)
+✅ Step 5: Set up notifications
+```
+
+#### Backend changes:
+```
+POST /api/auth/register-agency   ← New endpoint (creates Tenant + Admin User)
+POST /api/auth/forgot-password
+POST /api/auth/reset-password
+GET  /api/auth/me
+```
+
+---
+
+### Phase 2 — Subscription Plans & Billing (Week 2–3)
+
+**Goal:** Agencies pay monthly. You earn recurring revenue.
+
+#### Plans:
+
+| Plan | Price | Agents | Leads/month | Features |
+|------|-------|--------|-------------|---------|
+| **Starter** (Free trial) | ₹0 / 14 days | 2 | 100 | Core CRM |
+| **Growth** | ₹1,999/mo | 10 | 1,000 | + Webhooks, email alerts |
+| **Pro** | ₹4,999/mo | 30 | 10,000 | + WhatsApp, portal parsers |
+| **Enterprise** | ₹12,999/mo | Unlimited | Unlimited | + White-label, API, priority support |
+
+#### Billing tech stack:
+- **Razorpay** (best for India, UPI/cards/net banking)
+- Store subscription status on `Tenant` model
+- Enforce limits via middleware (e.g., block lead creation if monthly limit hit)
+
+#### Backend changes:
+```prisma
+model Subscription {
+  id            String   @id @default(cuid())
+  tenantId      String   @unique
+  plan          String   // starter | growth | pro | enterprise
+  status        String   // trial | active | past_due | cancelled
+  trialEndsAt   DateTime?
+  currentPeriodEnd DateTime?
+  razorpaySubId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+}
+```
+
+```
+POST /api/billing/create-subscription
+POST /api/billing/webhook              ← Razorpay payment events
+GET  /api/billing/plans
+GET  /api/billing/current
+POST /api/billing/cancel
+```
+
+---
+
+### Phase 3 — Agency Settings & Customization (Week 3)
+
+**Goal:** Each agency admin can customize their workspace.
+
+#### Settings pages:
+```
+/dashboard/settings/
+  ├── general          ← Agency name, logo, timezone, currency
+  ├── team             ← Invite/manage agents (already partially built)
+  ├── integrations     ← Connect lead sources
+  ├── notifications    ← Email/WhatsApp alert preferences
+  ├── billing          ← Plan, invoices, upgrade/downgrade
+  └── api-keys         ← Generate webhook API keys
+```
+
+#### Unique API key per tenant:
+Each agency gets a unique webhook API key:
+```
+x-api-key: sk_live_abc123xyz_dreamhome_properties
+```
+This is how their website form / property portal sends leads specifically to their workspace.
+
+---
+
+### Phase 4 — Lead Capture Webhooks (Week 4)
+
+**Goal:** Leads flow in automatically from any source.
+
+#### Architecture:
+```
+POST /api/webhooks/leads
+Headers: x-api-key: {tenant_api_key}
+
+Body (flexible, any source):
+{
+  "name": "Rahul Sharma",
+  "phone": "9876543210",
+  "email": "rahul@gmail.com",
+  "source": "99acres",          // or "facebook", "website", "whatsapp" etc.
+  "message": "Looking for 3BHK",
+  "budget": "50-75 Lakhs",
+  "city": "Mumbai",
+  "property_name": "Skyline Tower"
+}
+
+Response:
+{ "success": true, "leadId": "clx123..." }
+```
+
+#### Sources to integrate:
+
+**1. Website Contact Form**
+Agency embeds 5 lines of JS on their website → leads flow in.
+
+**2. Facebook/Instagram Lead Ads**
+Meta sends leads via webhook when someone submits a Lead Ad.
+
+**3. Property Portals (email parsing)**
+- 99acres, MagicBricks send email notifications
+- Agency forwards those emails to `leads-{slug}@propcrm.in`
+- Your email server parses and creates leads
+
+**4. WhatsApp (Meta Cloud API or Wati)**
+Customer messages agency's WhatsApp → lead auto-created.
+
+**5. Housing.com**
+They support direct webhook URL — agency just enters your URL in their dashboard.
+
+---
+
+### Phase 5 — Notification System (Week 4–5)
+
+**Goal:** Agent is instantly notified when a new lead is assigned.
+
+#### Channels:
+
+**Email (via SendGrid or Resend — free tier)**
+```
+Subject: 🔔 New Lead Assigned — Rahul Sharma (9876543210)
+Body:
+  Name: Rahul Sharma
+  Phone: 9876543210
+  Source: 99acres
+  Interest: 3BHK in Andheri, ₹60–80L
+  [View Lead →]
+```
+
+**WhatsApp to Agent (via Meta or Wati)**
+```
+Hi Priya! 👋
+New lead assigned to you:
+Name: Rahul Sharma | 📞 9876543210
+Source: MagicBricks
+Budget: ₹60–80L | 3BHK, Andheri
+[Open CRM →]
+```
+
+**In-app (already works)**
+Real-time via browser (can add WebSocket/SSE later for push).
+
+#### Backend:
+```
+backend/src/modules/notifications/
+  ├── notifications.service.ts
+  ├── email/
+  │   ├── email.service.ts      ← SendGrid/Resend
+  │   └── templates/            ← HTML email templates
+  └── whatsapp/
+      └── whatsapp.service.ts   ← Meta Cloud API
+```
+
+---
+
+### Phase 6 — Super Admin Panel (Week 5)
+
+**Goal:** You (the SaaS owner) need a dashboard to see all agencies, revenue, and system health.
+
+#### Your admin panel (`/superadmin`):
+```
+Overview:
+  - Total agencies: 47
+  - Active subscriptions: 38
+  - Monthly Recurring Revenue: ₹1,24,000
+  - New signups this month: 12
+  - Total leads captured: 18,420
+
+Agency list:
+  ┌─────────────────────┬───────────┬────────┬─────────────┬────────┐
+  │ Agency              │ Plan      │ Agents │ Leads/Month │ Status │
+  ├─────────────────────┼───────────┼────────┼─────────────┼────────┤
+  │ Skyline Realty      │ Pro       │ 8      │ 423         │ Active │
+  │ DreamHome Prop.     │ Growth    │ 4      │ 87          │ Active │
+  │ UrbanNest Realtors  │ Starter   │ 2      │ 12          │ Trial  │
+  └─────────────────────┴───────────┴────────┴─────────────┴────────┘
+
+Actions per agency:
+  - View their dashboard
+  - Change plan
+  - Suspend / reactivate
+  - Send announcement
+  - View support tickets
+```
+
+#### Separate auth:
+Super admin login is completely separate from tenant login.
+Use a different JWT scope or a hardcoded super-admin email list.
+
+---
+
+### Phase 7 — Mobile PWA (Week 6)
+
+**Goal:** Agents use the CRM on their phones in the field.
+
+#### What makes it mobile-ready:
+- Responsive CSS (already partially done in Next.js)
+- PWA manifest + service worker → "Add to Home Screen" like an app
+- Mobile-first pages: Lead detail, Quick status update, Click-to-call
+- Offline support: View last-fetched leads without internet
+
+#### Key mobile screens:
+```
+Home:     My leads today | Follow-ups due
+Lead:     One-tap call | WhatsApp | Status change
+Add lead: Quick add form (name + phone minimum)
+Tasks:    Today's follow-up list
+```
+
+No app store needed — agents just open the browser and install it as a PWA.
+
+---
+
+### Phase 8 — Growth & Scale (Month 2+)
+
+#### SEO & Content marketing:
+- Blog: "Best CRM for Real Estate Agents in India"
+- Landing pages per city: "Real Estate CRM for Mumbai Agents"
+- Free tools: "Lead ROI Calculator", "Property Commission Calculator"
+
+#### Agency marketplace (optional):
+A public directory of agencies using your platform.
+Buyers search → find agency → enquiry becomes a lead in their CRM.
+
+#### Integrations to add over time:
+- **Tally/Zoho Books** — Invoice sync
+- **Google Sheets** — Lead export
+- **IndiaMART / JustDial** — Lead import
+- **SMS gateway** (MSG91/Textlocal) — Bulk SMS to leads
+- **IVR / Call tracking** — Log calls automatically
+
+---
+
+## Tech Stack
+
+### Current (keep as-is):
+| Layer | Tech |
+|-------|------|
+| Frontend | Next.js 15, TypeScript |
+| Backend | NestJS, TypeScript |
+| Database | PostgreSQL |
+| ORM | Prisma |
+| Auth | JWT |
+
+### Add for SaaS:
+| Layer | Tech | Why |
+|-------|------|-----|
+| Billing | Razorpay | India-first, UPI support |
+| Email | Resend or SendGrid | Transactional emails |
+| WhatsApp | Meta Cloud API / Wati | Lead notifications |
+| File storage | Cloudflare R2 or AWS S3 | Logo / document uploads |
+| Caching | Redis | Session & rate limiting |
+| Job queue | BullMQ + Redis | Async jobs (email, webhooks) |
+| Deployment | Railway or AWS | Live public URL |
+| Domain | PropCRM.in or similar | Your SaaS brand |
+
+---
+
+## Monetization Model
+
+### Revenue streams:
+1. **Monthly subscriptions** (primary) — ₹1,999–₹12,999/agency/month
+2. **Annual plans** — 2 months free (improves cashflow)
+3. **SMS add-on** — ₹0.20/SMS beyond free quota
+4. **WhatsApp add-on** — ₹999/month extra
+5. **Setup fee** (optional) — ₹5,000 one-time for onboarding support
+6. **White-label** — ₹25,000 one-time for branded domain
+
+### Revenue projections:
+
+| Agencies | Avg Plan | Monthly Revenue |
+|----------|----------|-----------------|
+| 10 | Growth | ₹19,990 |
+| 50 | Growth | ₹99,950 |
+| 100 | Mix | ₹2,50,000 |
+| 500 | Mix | ₹12,50,000 |
+
+---
+
+## Go-to-Market Strategy
+
+### Target customer:
+- Independent real estate agents turning into agencies (2–10 people)
+- Mid-size agencies (10–50 agents) fed up with Excel/WhatsApp groups
+- Cities: Mumbai, Pune, Bangalore, Hyderabad, Delhi NCR, Chennai
+
+### Acquisition channels:
+1. **Direct outreach** — Contact agencies listed on 99acres/MagicBricks
+2. **YouTube/Instagram** — Short videos: "How to manage 100 leads without losing one"
+3. **Real estate WhatsApp groups** — Join agent communities
+4. **Google Ads** — "Real estate CRM India" keywords
+5. **Free tier** — Let small agencies use it free for 14 days
+6. **Referral program** — 1 month free for every agency you refer
+
+---
+
+## Recommended Build Order
+
+```
+Month 1 — Core SaaS foundation:
+  [ ] Phase 1: Landing page + Signup/Onboarding
+  [ ] Phase 2: Billing (Razorpay subscriptions)
+  [ ] Phase 3: Agency settings & API keys
+  [ ] Phase 4: Webhook lead capture
+
+Month 2 — Integrations & notifications:
+  [ ] Phase 5: Email + WhatsApp notifications
+  [ ] Phase 6: Super admin panel
+  [ ] Website form embed (JavaScript snippet)
+  [ ] Facebook Lead Ads webhook
+
+Month 3 — Polish & Growth:
+  [ ] Phase 7: Mobile PWA
+  [ ] Property portal email parsing
+  [ ] SEO landing pages
+  [ ] Deploy to production (Railway/AWS)
+  [ ] Phase 8: Start marketing
+```
+
+---
+
+## First Step to Start Building
+
+**Phase 1 is the unlock for everything.**
+Without a signup page, no agency can onboard themselves.
+
+The first thing to build is:
+1. `POST /api/auth/register-agency` endpoint
+2. Signup page at `/signup`
+3. Simple landing page at `/`
+
+**Should I start building Phase 1 now?**
