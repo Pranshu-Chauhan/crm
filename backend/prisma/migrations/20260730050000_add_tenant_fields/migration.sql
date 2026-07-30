@@ -1,0 +1,8 @@
+-- AlterTable
+ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "city" TEXT;
+ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "website" TEXT;
+ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "agentCount" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "apiKey" TEXT;
+
+-- CreateIndex
+CREATE UNIQUE INDEX IF NOT EXISTS "tenants_apiKey_key" ON "tenants"("apiKey");
