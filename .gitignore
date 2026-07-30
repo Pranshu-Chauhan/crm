@@ -3,8 +3,8 @@ node_modules/
 .pnp
 .pnp.js
 
-# Build outputs — backend/dist must NOT be ignored so Render can find it after build
-# dist/           ← intentionally not ignored at root level
+# Build outputs
+dist/
 frontend/.next/
 out/
 build/
