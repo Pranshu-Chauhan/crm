@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -15,6 +17,8 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 
 @Module({
+  controllers: [AppController],
+  providers: [AppService],
   imports: [
     // Local development starts Nest from /backend while shared settings live at the repo root.
     // Docker still supplies these values as environment variables.
