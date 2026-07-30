@@ -3,10 +3,23 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
+import { execSync } from 'child_process';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const compression = require('compression');
 
 async function bootstrap() {
+  // Run DB migrations before starting the server (production only)
+  if (process.env.NODE_ENV === 'production') {
+    try {
+      console.log('⏳ Running database migrations...');
+      execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+      console.log('✅ Migrations complete');
+    } catch (err) {
+      console.error('❌ Migration failed:', err);
+      process.exit(1);
+    }
+  }
+
   const app = await NestFactory.create(AppModule);
 
   // Security
